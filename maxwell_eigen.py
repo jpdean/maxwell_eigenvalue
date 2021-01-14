@@ -7,19 +7,13 @@
 
 import dolfinx
 from slepc4py import SLEPc
-from ufl import ds, dx, curl, inner, TrialFunction, TestFunction
+from ufl import dx, curl, inner, TrialFunction, TestFunction
 import numpy as np
-import ufl
-from dolfinx import DirichletBC, Function, FunctionSpace, RectangleMesh, fem
-from dolfinx.fem import locate_dofs_topological
-from dolfinx.io import XDMFFile
-from dolfinx.mesh import locate_entities_boundary
+from dolfinx import DirichletBC, Function, FunctionSpace, RectangleMesh
 from mpi4py import MPI
 from dolfinx.fem import assemble_matrix, locate_dofs_geometrical
 from petsc4py import PETSc
 from dolfinx.cpp.mesh import CellType
-from scipy.sparse.linalg import eigs
-from scipy.sparse import csr_matrix
 
 
 def eigenvalues(n_eigs, shift, V, bc):
