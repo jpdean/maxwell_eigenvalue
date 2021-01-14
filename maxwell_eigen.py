@@ -2,6 +2,8 @@
 
 # References:
 # [1]: https://fenicsproject.org/olddocs/dolfin/latest/python/demos/maxwell-eigenvalues/demo_maxwell-eigenvalues.py.html
+# [2]: https://bitbucket.org/fenics-project/dolfin/src/master/dolfin/la/SLEPcEigenSolver.cpp
+# [3]: https://slepc.upv.es/slepc4py-current/docs/apiref/slepc4py.SLEPc-module.html
 
 import dolfinx
 from slepc4py import SLEPc
@@ -40,39 +42,38 @@ def eigenvalues(n_eigs, V, bc):
     for index in dof_indices:
         B.setValue(index, index, 0)
     B.assemble()
-    # bi, bj, bv = B.getValuesCSR()
-    # Bsp = csr_matrix((bv, bj, bi))
-    # with open('B_new.npy', 'wb') as f:
-    #     np.save(f, Bsp.toarray())
 
-    # create SLEPc Eigenvalue solver
-    E = SLEPc.EPS().create(PETSc.COMM_WORLD)
-    E.setOperators(A, B)
-    E.setType(SLEPc.EPS.Type.KRYLOVSCHUR)
-    E.setProblemType(SLEPc.EPS.ProblemType.GHEP)
-    E.setWhichEigenpairs(E.Which.TARGET_MAGNITUDE)
+    # Create SLEPc Eigenvalue solver
+    # Settings found by following [1] and finding actual SLEPc settings from
+    # old FEniCS SLEPcEigenSolver.cpp documentation [2] and comparing with
+    # slepc4py documentation [3].
+    eps = SLEPc.EPS().create(PETSc.COMM_WORLD)
+    eps.setOperators(A, B)
+    eps.setType(SLEPc.EPS.Type.KRYLOVSCHUR)
+    eps.setProblemType(SLEPc.EPS.ProblemType.GHEP)
+    eps.setWhichEigenpairs(eps.Which.TARGET_MAGNITUDE)
 
-    st = E.getST()
+    st = eps.getST()
     st.setType(SLEPc.ST.Type.SINVERT)
     st.setShift(5.5)
 
-    E.setDimensions(n_eigs, PETSc.DECIDE, PETSc.DECIDE)
-    E.setFromOptions()
-    E.solve()
+    eps.setDimensions(n_eigs, PETSc.DECIDE, PETSc.DECIDE)
+    eps.setFromOptions()
+    eps.solve()
 
-    its = E.getIterationNumber()
+    its = eps.getIterationNumber()
     print("Number of iterations of the method: %d" % its)
 
-    eps_type = E.getType()
+    eps_type = eps.getType()
     print("Solution method: %s" % eps_type)
 
-    nev, ncv, mpd = E.getDimensions()
+    nev, ncv, mpd = eps.getDimensions()
     print("Number of requested eigenvalues: %d" % nev)
 
-    tol, maxit = E.getTolerances()
+    tol, maxit = eps.getTolerances()
     print("Stopping condition: tol=%.4g, maxit=%d" % (tol, maxit))
 
-    n_conv = E.getConverged()
+    n_conv = eps.getConverged()
     print("Number of converged eigenpairs %d" % n_conv)
 
     # if nconv > 0:
@@ -86,7 +87,7 @@ def eigenvalues(n_eigs, V, bc):
 
     computed_eigenvalues = []
     for i in range(n_conv):
-        lmbda = E.getEigenvalue(i)
+        lmbda = eps.getEigenvalue(i)
         if not np.isclose(lmbda, 0) and len(computed_eigenvalues) < n_eigs:
             computed_eigenvalues.append(np.round(np.real(lmbda)))
     return np.sort(computed_eigenvalues)
