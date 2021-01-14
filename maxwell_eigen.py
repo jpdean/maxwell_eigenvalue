@@ -22,7 +22,7 @@ from scipy.sparse.linalg import eigs
 from scipy.sparse import csr_matrix
 
 
-def eigenvalues(n_eigs, V, bc):
+def eigenvalues(n_eigs, shift, V, bc):
     # Define problem
     u = TrialFunction(V)
     v = TestFunction(V)
@@ -55,35 +55,26 @@ def eigenvalues(n_eigs, V, bc):
 
     st = eps.getST()
     st.setType(SLEPc.ST.Type.SINVERT)
-    st.setShift(5.5)
+    st.setShift(shift)
 
     eps.setDimensions(n_eigs, PETSc.DECIDE, PETSc.DECIDE)
     eps.setFromOptions()
     eps.solve()
 
     its = eps.getIterationNumber()
-    print("Number of iterations of the method: %d" % its)
+    print(f"Number of iterations: {its}")
 
     eps_type = eps.getType()
-    print("Solution method: %s" % eps_type)
+    print(f"Solution method: {eps_type}")
 
-    nev, ncv, mpd = eps.getDimensions()
-    print("Number of requested eigenvalues: %d" % nev)
+    n_ev, n_cv, mpd = eps.getDimensions()
+    print(f"Number of requested eigenvalues: {n_ev}")
 
-    tol, maxit = eps.getTolerances()
-    print("Stopping condition: tol=%.4g, maxit=%d" % (tol, maxit))
+    tol, max_it = eps.getTolerances()
+    print(f"Stopping condition: tol={tol}, maxit={max_it}")
 
     n_conv = eps.getConverged()
-    print("Number of converged eigenpairs %d" % n_conv)
-
-    # if nconv > 0:
-    #     # Create the results vectors
-    #     vr, vi = A.createVecs()
-    #     for i in range(nconv):
-    #         k = E.getEigenpair(i, vr, vi)
-    #         error = E.computeError(i)
-    #         print(f"Eigenvalue = {round(k.real, ndigits=2)},  Error = {error}")
-    #         # print(E.getEigenvalue(i))
+    print(f"Number of converged eigenpairs: {n_conv}")
 
     computed_eigenvalues = []
     for i in range(n_conv):
@@ -91,13 +82,6 @@ def eigenvalues(n_eigs, V, bc):
         if not np.isclose(lmbda, 0) and len(computed_eigenvalues) < n_eigs:
             computed_eigenvalues.append(np.round(np.real(lmbda)))
     return np.sort(computed_eigenvalues)
-
-    # ai, aj, av = A.getValuesCSR()
-    # Asp = csr_matrix((av, aj, ai))
-    # bi, bj, bv = B.getValuesCSR()
-    # Bsp = csr_matrix((bv, bj, bi))
-    # vals, vecs = eigs(Asp, M=Bsp, sigma=5.5, k=12)
-    # print(np.sort(np.real(vals)))
 
 
 def boundary(x):
@@ -112,6 +96,8 @@ def boundary(x):
 n = 40
 # Number of eigernvalues to compute
 n_eigs = 12
+# Find eigenvalues near
+shift = 5.5
 
 # Create mesh and function space
 mesh = RectangleMesh(
@@ -128,7 +114,7 @@ with ud.vector.localForm() as bc_local:
 bc = DirichletBC(ud, locate_dofs_geometrical(V, boundary))
 
 # Solve Maxwell eigenvalue problem
-nedelec_eigenvalues = eigenvalues(n_eigs, V, bc)
+nedelec_eigenvalues = eigenvalues(n_eigs, shift, V, bc)
 
 # Print results
 np.set_printoptions(formatter={'float': '{:5.1f}'.format})
