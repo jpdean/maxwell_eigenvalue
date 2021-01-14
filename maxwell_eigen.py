@@ -1,4 +1,6 @@
-# Based on:
+# Based on [1]
+
+# References:
 # [1]: https://fenicsproject.org/olddocs/dolfin/latest/python/demos/maxwell-eigenvalues/demo_maxwell-eigenvalues.py.html
 
 import dolfinx
@@ -57,19 +59,19 @@ def eigenvalues(n_eigs, V, bc):
     E.solve()
 
     its = E.getIterationNumber()
-    print( "Number of iterations of the method: %d" % its )
+    print("Number of iterations of the method: %d" % its)
 
     eps_type = E.getType()
-    print( "Solution method: %s" % eps_type )
+    print("Solution method: %s" % eps_type)
 
     nev, ncv, mpd = E.getDimensions()
-    print( "Number of requested eigenvalues: %d" % nev )
+    print("Number of requested eigenvalues: %d" % nev)
 
     tol, maxit = E.getTolerances()
-    print( "Stopping condition: tol=%.4g, maxit=%d" % (tol, maxit) )
+    print("Stopping condition: tol=%.4g, maxit=%d" % (tol, maxit))
 
     n_conv = E.getConverged()
-    print( "Number of converged eigenpairs %d" % n_conv)
+    print("Number of converged eigenpairs %d" % n_conv)
 
     # if nconv > 0:
     #     # Create the results vectors
@@ -103,28 +105,32 @@ def boundary(x):
     return np.logical_or(lr, tb)
 
 
+# Number of element in wach direction
 n = 40
+# Number of eigernvalues to compute
 n_eigs = 12
 
+# Create mesh and function space
 mesh = RectangleMesh(
     MPI.COMM_WORLD,
     [np.array([0, 0, 0]), np.array([np.pi, np.pi, 0])], [n, n],
     CellType.triangle, dolfinx.cpp.mesh.GhostMode.none,
     diagonal="right")
-
 V = FunctionSpace(mesh, ("N1curl", 1))
 
+# Set boundart DOFs to 0 (u x n = 0 on \partial \Omega).
 ud = Function(V)
 with ud.vector.localForm() as bc_local:
     bc_local.set(0.0)
-
-# Set up boundary condition on inner surface
 bc = DirichletBC(ud, locate_dofs_geometrical(V, boundary))
+
+# Solve Maxwell eigenvalue problem
 nedelec_eigenvalues = eigenvalues(n_eigs, V, bc)
 
+# Print results
 np.set_printoptions(formatter={'float': '{:5.1f}'.format})
-
-exact_eigenvalues = np.sort(np.array([float(m**2 + n**2) for m in range(6) for n in range(6)]))[1:13]
-
+exact_eigenvalues = np.sort(np.array([float(m**2 + n**2)
+                                      for m in range(6)
+                                      for n in range(6)]))[1:13]
 print(f"Exact   = {exact_eigenvalues}")
 print(f"Nédélec = {nedelec_eigenvalues}")
