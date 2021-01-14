@@ -85,7 +85,7 @@ def eigenvalues(n_eigs, V, bc):
         lmbda = E.getEigenvalue(i)
         if not np.isclose(lmbda, 0) and len(computed_eigenvalues) < n_eigs:
             computed_eigenvalues.append(np.round(np.real(lmbda)))
-    print(computed_eigenvalues)
+    return np.sort(computed_eigenvalues)
 
     # ai, aj, av = A.getValuesCSR()
     # Asp = csr_matrix((av, aj, ai))
@@ -120,4 +120,11 @@ with ud.vector.localForm() as bc_local:
 
 # Set up boundary condition on inner surface
 bc = DirichletBC(ud, locate_dofs_geometrical(V, boundary))
-eigenvalues(n_eigs, V, bc)
+nedelec_eigenvalues = eigenvalues(n_eigs, V, bc)
+
+np.set_printoptions(formatter={'float': '{:5.1f}'.format})
+
+exact_eigenvalues = np.sort(np.array([float(m**2 + n**2) for m in range(6) for n in range(6)]))[1:13]
+
+print(f"Exact   = {exact_eigenvalues}")
+print(f"Nédélec = {nedelec_eigenvalues}")
