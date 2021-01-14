@@ -21,18 +21,20 @@ from scipy.sparse import csr_matrix
 
 
 def eigenvalues(n_eigs, V, bc):
+    # Define problem
     u = TrialFunction(V)
     v = TestFunction(V)
     a = inner(curl(u), curl(v)) * dx
     b = inner(u, v) * dx
 
+    # Assemble matrices
     # TODO Check this preserves symmetry, see comment in [1]
     A = assemble_matrix(a, [bc])
     A.assemble()
     B = assemble_matrix(b, [bc])
     B.assemble()
 
-    # TODO They zero out rows of B, see demo. Not 100% sure why.
+    # Zero rows of boundary DOFs of B. See [1]
     # FIXME This is probably a stupid way of doing it
     dof_indices = bc.dof_indices()[0]
     for index in dof_indices:
