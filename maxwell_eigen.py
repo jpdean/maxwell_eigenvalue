@@ -73,6 +73,7 @@ def eigenvalues(n_eigs, shift, V, bc):
     computed_eigenvalues = []
     for i in range(n_conv):
         lmbda = eps.getEigenvalue(i)
+        # Ignore zero eigenvalues, see [1]
         if not np.isclose(lmbda, 0) and len(computed_eigenvalues) < n_eigs:
             computed_eigenvalues.append(np.round(np.real(lmbda)))
     return np.sort(computed_eigenvalues)
