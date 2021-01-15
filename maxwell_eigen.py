@@ -17,7 +17,7 @@ from petsc4py import PETSc
 from dolfinx.cpp.mesh import CellType
 
 
-def eigenvalues(n_eigs, shift, V, bc):
+def eigenvalues(n_eigs, shift, V, bcs):
     # Define problem
     u = TrialFunction(V)
     v = TestFunction(V)
@@ -26,16 +26,17 @@ def eigenvalues(n_eigs, shift, V, bc):
 
     # Assemble matrices
     # TODO Check this preserves symmetry, see comment in [1]
-    A = assemble_matrix(a, [bc])
+    A = assemble_matrix(a, bcs)
     A.assemble()
-    B = assemble_matrix(b, [bc])
+    B = assemble_matrix(b, bcs)
     B.assemble()
 
     # Zero rows of boundary DOFs of B. See [1]
     # FIXME This is probably a stupid way of doing it
-    dof_indices = bc.dof_indices()[0]
-    for index in dof_indices:
-        B.setValue(index, index, 0)
+    for bc in bcs:
+        dof_indices = bc.dof_indices()[0]
+        for index in dof_indices:
+            B.setValue(index, index, 0)
     B.assemble()
 
     # Create SLEPc Eigenvalue solver
@@ -117,11 +118,11 @@ V_nedelec = FunctionSpace(mesh, ("N1curl", 1))
 ud_nedelec = Function(V_nedelec)
 with ud_nedelec.vector.localForm() as bc_local:
     bc_local.set(0.0)
-bc_nedelec = DirichletBC(ud_nedelec,
-                         locate_dofs_geometrical(V_nedelec, boundary))
+bcs_nedelec = [DirichletBC(ud_nedelec,
+                           locate_dofs_geometrical(V_nedelec, boundary))]
 
 # Solve Maxwell eigenvalue problem
-eigenvalues_nedelec = eigenvalues(n_eigs, shift, V_nedelec, bc_nedelec)
+eigenvalues_nedelec = eigenvalues(n_eigs, shift, V_nedelec, bcs_nedelec)
 
 # Lagrange
 V_lagrange = VectorFunctionSpace(mesh, ("Lagrange", 1))
