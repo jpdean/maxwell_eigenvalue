@@ -100,16 +100,17 @@ mesh = RectangleMesh(
     [np.array([0, 0, 0]), np.array([np.pi, np.pi, 0])], [n, n],
     CellType.triangle, dolfinx.cpp.mesh.GhostMode.none,
     diagonal="right")
-V = FunctionSpace(mesh, ("N1curl", 1))
+V_nedelec = FunctionSpace(mesh, ("N1curl", 1))
 
 # Set boundart DOFs to 0 (u x n = 0 on \partial \Omega).
-ud = Function(V)
-with ud.vector.localForm() as bc_local:
+ud_nedelec = Function(V_nedelec)
+with ud_nedelec.vector.localForm() as bc_local:
     bc_local.set(0.0)
-bc = DirichletBC(ud, locate_dofs_geometrical(V, boundary))
+bc_nedelec = DirichletBC(ud_nedelec,
+                         locate_dofs_geometrical(V_nedelec, boundary))
 
 # Solve Maxwell eigenvalue problem
-nedelec_eigenvalues = eigenvalues(n_eigs, shift, V, bc)
+eigenvalues_nedelec = eigenvalues(n_eigs, shift, V_nedelec, bc_nedelec)
 
 # Print results
 np.set_printoptions(formatter={'float': '{:5.1f}'.format})
@@ -117,4 +118,4 @@ exact_eigenvalues = np.sort(np.array([float(m**2 + n**2)
                                       for m in range(6)
                                       for n in range(6)]))[1:13]
 print(f"Exact   = {exact_eigenvalues}")
-print(f"Nédélec = {nedelec_eigenvalues}")
+print(f"Nédélec = {eigenvalues_nedelec}")
