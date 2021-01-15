@@ -114,8 +114,8 @@ eigenvalues_nedelec = eigenvalues(n_eigs, shift, V_nedelec, bc_nedelec)
 
 # Print results
 np.set_printoptions(formatter={'float': '{:5.1f}'.format})
-exact_eigenvalues = np.sort(np.array([float(m**2 + n**2)
+eigenvalues_exact = np.sort(np.array([float(m**2 + n**2)
                                       for m in range(6)
                                       for n in range(6)]))[1:13]
-print(f"Exact   = {exact_eigenvalues}")
+print(f"Exact   = {eigenvalues_exact}")
 print(f"Nédélec = {eigenvalues_nedelec}")
