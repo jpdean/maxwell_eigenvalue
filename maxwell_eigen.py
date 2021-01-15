@@ -9,7 +9,8 @@ import dolfinx
 from slepc4py import SLEPc
 from ufl import dx, curl, inner, TrialFunction, TestFunction
 import numpy as np
-from dolfinx import DirichletBC, Function, FunctionSpace, RectangleMesh
+from dolfinx import (DirichletBC, Function, FunctionSpace, RectangleMesh,
+                     VectorFunctionSpace)
 from mpi4py import MPI
 from dolfinx.fem import assemble_matrix, locate_dofs_geometrical
 from petsc4py import PETSc
@@ -80,11 +81,19 @@ def eigenvalues(n_eigs, shift, V, bc):
 
 
 def boundary(x):
-    lr = np.logical_or(np.isclose(x[0], 0.0),
-                       np.isclose(x[0], np.pi))
-    tb = np.logical_or(np.isclose(x[1], 0.0),
-                       np.isclose(x[1], np.pi))
+    lr = boundary_lr(x)
+    tb = boundary_tb(x)
     return np.logical_or(lr, tb)
+
+
+def boundary_lr(x):
+    return np.logical_or(np.isclose(x[0], 0.0),
+                         np.isclose(x[0], np.pi))
+
+
+def boundary_tb(x):
+    return np.logical_or(np.isclose(x[1], 0.0),
+                         np.isclose(x[1], np.pi))
 
 
 # Number of element in wach direction
@@ -100,6 +109,8 @@ mesh = RectangleMesh(
     [np.array([0, 0, 0]), np.array([np.pi, np.pi, 0])], [n, n],
     CellType.triangle, dolfinx.cpp.mesh.GhostMode.none,
     diagonal="right")
+
+# Nédélec
 V_nedelec = FunctionSpace(mesh, ("N1curl", 1))
 
 # Set boundart DOFs to 0 (u x n = 0 on \partial \Omega).
@@ -111,6 +122,9 @@ bc_nedelec = DirichletBC(ud_nedelec,
 
 # Solve Maxwell eigenvalue problem
 eigenvalues_nedelec = eigenvalues(n_eigs, shift, V_nedelec, bc_nedelec)
+
+# Lagrange
+V_lagrange = VectorFunctionSpace(mesh, ("Lagrange", 1))
 
 # Print results
 np.set_printoptions(formatter={'float': '{:5.1f}'.format})
