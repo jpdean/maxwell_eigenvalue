@@ -15,6 +15,7 @@ from mpi4py import MPI
 from dolfinx.fem import assemble_matrix, locate_dofs_geometrical
 from petsc4py import PETSc
 from dolfinx.cpp.mesh import CellType
+from dolfinx.mesh import locate_entities_boundary
 
 
 def eigenvalues(n_eigs, shift, V, bcs):
@@ -125,12 +126,23 @@ bcs_nedelec = [DirichletBC(ud_nedelec,
 eigenvalues_nedelec = eigenvalues(n_eigs, shift, V_nedelec, bcs_nedelec)
 
 # Lagrange
-V_lagrange = VectorFunctionSpace(mesh, ("Lagrange", 1))
+W = VectorFunctionSpace(mesh, ("Lagrange", 1))
+V = FunctionSpace(mesh, ("Lagrange", 1))
+
+ud_lagrange = Function(V)
+with ud_lagrange.vector.localForm() as ud_lagrange_local:
+    ud_lagrange_local.set(0.0)
+dofs_0 = dolfinx.fem.locate_dofs_geometrical((W.sub(0), V), boundary_tb)
+dofs_1 = dolfinx.fem.locate_dofs_geometrical((W.sub(1), V), boundary_lr)
+bcs_lagrange = [DirichletBC(ud_lagrange, dofs_0, W.sub(0)),
+                DirichletBC(ud_lagrange, dofs_1, W.sub(1))]
+eigenvalues_lagrange = eigenvalues(n_eigs, shift, W, bcs_lagrange)
 
 # Print results
 np.set_printoptions(formatter={'float': '{:5.1f}'.format})
 eigenvalues_exact = np.sort(np.array([float(m**2 + n**2)
                                       for m in range(6)
                                       for n in range(6)]))[1:13]
-print(f"Exact   = {eigenvalues_exact}")
-print(f"Nédélec = {eigenvalues_nedelec}")
+print(f"Exact    = {eigenvalues_exact}")
+print(f"Nédélec  = {eigenvalues_nedelec}")
+print(f"Lagrange = {eigenvalues_lagrange}")
