@@ -15,9 +15,6 @@ from mpi4py import MPI
 from dolfinx.fem import assemble_matrix, locate_dofs_geometrical
 from petsc4py import PETSc
 from dolfinx.cpp.mesh import CellType
-from dolfinx.mesh import locate_entities_boundary
-from scipy.sparse import csr_matrix
-from scipy.sparse.linalg import eigs
 
 
 def eigenvalues(n_eigs, shift, V, bcs):
