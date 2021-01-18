@@ -99,59 +99,72 @@ def boundary_tb(x):
                          np.isclose(x[1], np.pi))
 
 
-# Number of element in wach direction
+def print_eigenvalues(mesh):
+    # Nédélec
+    V_nedelec = FunctionSpace(mesh, ("N1curl", 1))
+
+    # Set boundary DOFs to 0 (u x n = 0 on \partial \Omega).
+    ud_nedelec = Function(V_nedelec)
+    with ud_nedelec.vector.localForm() as bc_local:
+        bc_local.set(0.0)
+    bcs_nedelec = [DirichletBC(ud_nedelec,
+                               locate_dofs_geometrical(V_nedelec, boundary))]
+
+    # Solve Maxwell eigenvalue problem
+    eigenvalues_nedelec = eigenvalues(n_eigs, shift, V_nedelec, bcs_nedelec)
+
+    # Lagrange
+    V_vec_lagrange = VectorFunctionSpace(mesh, ("Lagrange", 1))
+    V_lagrange = FunctionSpace(mesh, ("Lagrange", 1))
+
+    # Zero function
+    ud_lagrange = Function(V_lagrange)
+    with ud_lagrange.vector.localForm() as ud_lagrange_local:
+        ud_lagrange_local.set(0.0)
+    # Find correct DOFs to constrain. Must constrain horizontal DOFs on
+    # horizontal faces and vertical DOFs on vertical faces
+    dofs_0 = dolfinx.fem.locate_dofs_geometrical(
+        (V_vec_lagrange.sub(0), V_lagrange), boundary_tb)
+    dofs_1 = dolfinx.fem.locate_dofs_geometrical(
+        (V_vec_lagrange.sub(1), V_lagrange), boundary_lr)
+    bcs_lagrange = [DirichletBC(ud_lagrange, dofs_0, V_vec_lagrange.sub(0)),
+                    DirichletBC(ud_lagrange, dofs_1, V_vec_lagrange.sub(1))]
+
+    # Solve Maxwell eigenvalue problem
+    eigenvalues_lagrange = eigenvalues(
+        n_eigs, shift, V_vec_lagrange, bcs_lagrange)
+
+    # Print results
+    np.set_printoptions(formatter={'float': '{:5.1f}'.format})
+    eigenvalues_exact = np.sort(np.array([float(m**2 + n**2)
+                                          for m in range(6)
+                                          for n in range(6)]))[1:13]
+    print(f"Exact    = {eigenvalues_exact}")
+    print(f"Nédélec  = {eigenvalues_nedelec}")
+    print(f"Lagrange = {eigenvalues_lagrange}")
+
+
+# Number of element in each direction
 n = 40
 # Number of eigernvalues to compute
 n_eigs = 12
 # Find eigenvalues near
 shift = 5.5
 
-# Create mesh and function space
+print("Right diagonal mesh:")
+# Create mesh with right diagonal
 mesh = RectangleMesh(
     MPI.COMM_WORLD,
     [np.array([0, 0, 0]), np.array([np.pi, np.pi, 0])], [n, n],
     CellType.triangle, dolfinx.cpp.mesh.GhostMode.none,
     diagonal="right")
-    # diagonal="crossed")
+print_eigenvalues(mesh)
 
-# Nédélec
-V_nedelec = FunctionSpace(mesh, ("N1curl", 1))
-
-# Set boundary DOFs to 0 (u x n = 0 on \partial \Omega).
-ud_nedelec = Function(V_nedelec)
-with ud_nedelec.vector.localForm() as bc_local:
-    bc_local.set(0.0)
-bcs_nedelec = [DirichletBC(ud_nedelec,
-                           locate_dofs_geometrical(V_nedelec, boundary))]
-
-# Solve Maxwell eigenvalue problem
-eigenvalues_nedelec = eigenvalues(n_eigs, shift, V_nedelec, bcs_nedelec)
-
-# Lagrange
-V_vec_lagrange = VectorFunctionSpace(mesh, ("Lagrange", 1))
-V_lagrange = FunctionSpace(mesh, ("Lagrange", 1))
-
-# Zero function
-ud_lagrange = Function(V_lagrange)
-with ud_lagrange.vector.localForm() as ud_lagrange_local:
-    ud_lagrange_local.set(0.0)
-# Find correct DOFs to constrain. Must constrain horizontal DOFs on
-# horizontal faces and vertical DOFs on vertical faces
-dofs_0 = dolfinx.fem.locate_dofs_geometrical(
-    (V_vec_lagrange.sub(0), V_lagrange), boundary_tb)
-dofs_1 = dolfinx.fem.locate_dofs_geometrical(
-    (V_vec_lagrange.sub(1), V_lagrange), boundary_lr)
-bcs_lagrange = [DirichletBC(ud_lagrange, dofs_0, V_vec_lagrange.sub(0)),
-                DirichletBC(ud_lagrange, dofs_1, V_vec_lagrange.sub(1))]
-
-# Solve Maxwell eigenvalue problem
-eigenvalues_lagrange = eigenvalues(n_eigs, shift, V_vec_lagrange, bcs_lagrange)
-
-# Print results
-np.set_printoptions(formatter={'float': '{:5.1f}'.format})
-eigenvalues_exact = np.sort(np.array([float(m**2 + n**2)
-                                      for m in range(6)
-                                      for n in range(6)]))[1:13]
-print(f"Exact    = {eigenvalues_exact}")
-print(f"Nédélec  = {eigenvalues_nedelec}")
-print(f"Lagrange = {eigenvalues_lagrange}")
+print("\nCrossed diagonal mesh:")
+# Create mesh with crossed diagonal
+mesh = RectangleMesh(
+    MPI.COMM_WORLD,
+    [np.array([0, 0, 0]), np.array([np.pi, np.pi, 0])], [n, n],
+    CellType.triangle, dolfinx.cpp.mesh.GhostMode.none,
+    diagonal="crossed")
+print_eigenvalues(mesh)
