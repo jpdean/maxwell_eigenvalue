@@ -9,14 +9,15 @@ import dolfinx
 from slepc4py import SLEPc
 from ufl import dx, curl, inner, TrialFunction, TestFunction
 import numpy as np
-from dolfinx import DirichletBC, Function, FunctionSpace, RectangleMesh
+from dolfinx import (DirichletBC, Function, FunctionSpace, RectangleMesh,
+                     VectorFunctionSpace)
 from mpi4py import MPI
 from dolfinx.fem import assemble_matrix, locate_dofs_geometrical
 from petsc4py import PETSc
 from dolfinx.cpp.mesh import CellType
 
 
-def eigenvalues(n_eigs, shift, V, bc):
+def eigenvalues(n_eigs, shift, V, bcs):
     # Define problem
     u = TrialFunction(V)
     v = TestFunction(V)
@@ -25,16 +26,17 @@ def eigenvalues(n_eigs, shift, V, bc):
 
     # Assemble matrices
     # TODO Check this preserves symmetry, see comment in [1]
-    A = assemble_matrix(a, [bc])
+    A = assemble_matrix(a, bcs)
     A.assemble()
-    B = assemble_matrix(b, [bc])
+    B = assemble_matrix(b, bcs)
     B.assemble()
 
     # Zero rows of boundary DOFs of B. See [1]
     # FIXME This is probably a stupid way of doing it
-    dof_indices = bc.dof_indices()[0]
-    for index in dof_indices:
-        B.setValue(index, index, 0)
+    for bc in bcs:
+        dof_indices = bc.dof_indices()[0]
+        for index in dof_indices:
+            B.setValue(index, index, 0)
     B.assemble()
 
     # Create SLEPc Eigenvalue solver
@@ -46,6 +48,7 @@ def eigenvalues(n_eigs, shift, V, bc):
     eps.setType(SLEPc.EPS.Type.KRYLOVSCHUR)
     eps.setProblemType(SLEPc.EPS.ProblemType.GHEP)
     eps.setWhichEigenpairs(eps.Which.TARGET_MAGNITUDE)
+    eps.setTarget(shift)
 
     st = eps.getST()
     st.setType(SLEPc.ST.Type.SINVERT)
@@ -71,50 +74,94 @@ def eigenvalues(n_eigs, shift, V, bc):
     print(f"Number of converged eigenpairs: {n_conv}")
 
     computed_eigenvalues = []
-    for i in range(n_conv):
+    for i in range(min(n_conv, n_eigs)):
         lmbda = eps.getEigenvalue(i)
-        # Ignore zero eigenvalues, see [1]
-        if not np.isclose(lmbda, 0) and len(computed_eigenvalues) < n_eigs:
-            computed_eigenvalues.append(np.round(np.real(lmbda)))
+        computed_eigenvalues.append(np.round(np.real(lmbda), 1))
     return np.sort(computed_eigenvalues)
 
 
 def boundary(x):
-    lr = np.logical_or(np.isclose(x[0], 0.0),
-                       np.isclose(x[0], np.pi))
-    tb = np.logical_or(np.isclose(x[1], 0.0),
-                       np.isclose(x[1], np.pi))
+    lr = boundary_lr(x)
+    tb = boundary_tb(x)
     return np.logical_or(lr, tb)
 
 
-# Number of element in wach direction
+def boundary_lr(x):
+    return np.logical_or(np.isclose(x[0], 0.0),
+                         np.isclose(x[0], np.pi))
+
+
+def boundary_tb(x):
+    return np.logical_or(np.isclose(x[1], 0.0),
+                         np.isclose(x[1], np.pi))
+
+
+def print_eigenvalues(mesh):
+    # Nédélec
+    V_nedelec = FunctionSpace(mesh, ("N1curl", 1))
+
+    # Set boundary DOFs to 0 (u x n = 0 on \partial \Omega).
+    ud_nedelec = Function(V_nedelec)
+    with ud_nedelec.vector.localForm() as bc_local:
+        bc_local.set(0.0)
+    bcs_nedelec = [DirichletBC(ud_nedelec,
+                               locate_dofs_geometrical(V_nedelec, boundary))]
+
+    # Solve Maxwell eigenvalue problem
+    eigenvalues_nedelec = eigenvalues(n_eigs, shift, V_nedelec, bcs_nedelec)
+
+    # Lagrange
+    V_vec_lagrange = VectorFunctionSpace(mesh, ("Lagrange", 1))
+    V_lagrange = FunctionSpace(mesh, ("Lagrange", 1))
+
+    # Zero function
+    ud_lagrange = Function(V_lagrange)
+    with ud_lagrange.vector.localForm() as ud_lagrange_local:
+        ud_lagrange_local.set(0.0)
+    # Find correct DOFs to constrain. Must constrain horizontal DOFs on
+    # horizontal faces and vertical DOFs on vertical faces
+    dofs_0 = dolfinx.fem.locate_dofs_geometrical(
+        (V_vec_lagrange.sub(0), V_lagrange), boundary_tb)
+    dofs_1 = dolfinx.fem.locate_dofs_geometrical(
+        (V_vec_lagrange.sub(1), V_lagrange), boundary_lr)
+    bcs_lagrange = [DirichletBC(ud_lagrange, dofs_0, V_vec_lagrange.sub(0)),
+                    DirichletBC(ud_lagrange, dofs_1, V_vec_lagrange.sub(1))]
+
+    # Solve Maxwell eigenvalue problem
+    eigenvalues_lagrange = eigenvalues(
+        n_eigs, shift, V_vec_lagrange, bcs_lagrange)
+
+    # Print results
+    np.set_printoptions(formatter={'float': '{:5.1f}'.format})
+    eigenvalues_exact = np.sort(np.array([float(m**2 + n**2)
+                                          for m in range(6)
+                                          for n in range(6)]))[1:13]
+    print(f"Exact    = {eigenvalues_exact}")
+    print(f"Nédélec  = {eigenvalues_nedelec}")
+    print(f"Lagrange = {eigenvalues_lagrange}")
+
+
+# Number of element in each direction
 n = 40
 # Number of eigernvalues to compute
 n_eigs = 12
 # Find eigenvalues near
 shift = 5.5
 
-# Create mesh and function space
+print("Right diagonal mesh:")
+# Create mesh with right diagonal
 mesh = RectangleMesh(
     MPI.COMM_WORLD,
     [np.array([0, 0, 0]), np.array([np.pi, np.pi, 0])], [n, n],
     CellType.triangle, dolfinx.cpp.mesh.GhostMode.none,
     diagonal="right")
-V = FunctionSpace(mesh, ("N1curl", 1))
+print_eigenvalues(mesh)
 
-# Set boundart DOFs to 0 (u x n = 0 on \partial \Omega).
-ud = Function(V)
-with ud.vector.localForm() as bc_local:
-    bc_local.set(0.0)
-bc = DirichletBC(ud, locate_dofs_geometrical(V, boundary))
-
-# Solve Maxwell eigenvalue problem
-nedelec_eigenvalues = eigenvalues(n_eigs, shift, V, bc)
-
-# Print results
-np.set_printoptions(formatter={'float': '{:5.1f}'.format})
-exact_eigenvalues = np.sort(np.array([float(m**2 + n**2)
-                                      for m in range(6)
-                                      for n in range(6)]))[1:13]
-print(f"Exact   = {exact_eigenvalues}")
-print(f"Nédélec = {nedelec_eigenvalues}")
+print("\nCrossed diagonal mesh:")
+# Create mesh with crossed diagonal
+mesh = RectangleMesh(
+    MPI.COMM_WORLD,
+    [np.array([0, 0, 0]), np.array([np.pi, np.pi, 0])], [n, n],
+    CellType.triangle, dolfinx.cpp.mesh.GhostMode.none,
+    diagonal="crossed")
+print_eigenvalues(mesh)
