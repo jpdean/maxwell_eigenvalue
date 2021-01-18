@@ -16,6 +16,8 @@ from dolfinx.fem import assemble_matrix, locate_dofs_geometrical
 from petsc4py import PETSc
 from dolfinx.cpp.mesh import CellType
 from dolfinx.mesh import locate_entities_boundary
+from scipy.sparse import csr_matrix
+from scipy.sparse.linalg import eigs
 
 
 def eigenvalues(n_eigs, shift, V, bcs):
@@ -40,45 +42,54 @@ def eigenvalues(n_eigs, shift, V, bcs):
             B.setValue(index, index, 0)
     B.assemble()
 
-    # Create SLEPc Eigenvalue solver
-    # Settings found by following [1] and finding actual SLEPc settings from
-    # old FEniCS SLEPcEigenSolver.cpp documentation [2] and comparing with
-    # slepc4py documentation [3].
-    eps = SLEPc.EPS().create(PETSc.COMM_WORLD)
-    eps.setOperators(A, B)
-    eps.setType(SLEPc.EPS.Type.KRYLOVSCHUR)
-    eps.setProblemType(SLEPc.EPS.ProblemType.GHEP)
-    eps.setWhichEigenpairs(eps.Which.TARGET_MAGNITUDE)
+    # # Create SLEPc Eigenvalue solver
+    # # Settings found by following [1] and finding actual SLEPc settings from
+    # # old FEniCS SLEPcEigenSolver.cpp documentation [2] and comparing with
+    # # slepc4py documentation [3].
+    # eps = SLEPc.EPS().create(PETSc.COMM_WORLD)
+    # eps.setOperators(A, B)
+    # eps.setType(SLEPc.EPS.Type.KRYLOVSCHUR)
+    # eps.setProblemType(SLEPc.EPS.ProblemType.GHEP)
+    # eps.setWhichEigenpairs(eps.Which.TARGET_MAGNITUDE)
 
-    st = eps.getST()
-    st.setType(SLEPc.ST.Type.SINVERT)
-    st.setShift(shift)
+    # st = eps.getST()
+    # st.setType(SLEPc.ST.Type.SINVERT)
+    # st.setShift(shift)
 
-    eps.setDimensions(n_eigs, PETSc.DECIDE, PETSc.DECIDE)
-    eps.setFromOptions()
-    eps.solve()
+    # eps.setDimensions(n_eigs, PETSc.DECIDE, PETSc.DECIDE)
+    # eps.setFromOptions()
+    # eps.solve()
 
-    its = eps.getIterationNumber()
-    print(f"Number of iterations: {its}")
+    # its = eps.getIterationNumber()
+    # print(f"Number of iterations: {its}")
 
-    eps_type = eps.getType()
-    print(f"Solution method: {eps_type}")
+    # eps_type = eps.getType()
+    # print(f"Solution method: {eps_type}")
 
-    n_ev, n_cv, mpd = eps.getDimensions()
-    print(f"Number of requested eigenvalues: {n_ev}")
+    # n_ev, n_cv, mpd = eps.getDimensions()
+    # print(f"Number of requested eigenvalues: {n_ev}")
 
-    tol, max_it = eps.getTolerances()
-    print(f"Stopping condition: tol={tol}, maxit={max_it}")
+    # tol, max_it = eps.getTolerances()
+    # print(f"Stopping condition: tol={tol}, maxit={max_it}")
 
-    n_conv = eps.getConverged()
-    print(f"Number of converged eigenpairs: {n_conv}")
+    # n_conv = eps.getConverged()
+    # print(f"Number of converged eigenpairs: {n_conv}")
 
-    computed_eigenvalues = []
-    for i in range(n_conv):
-        lmbda = eps.getEigenvalue(i)
-        # Ignore zero eigenvalues, see [1]
-        if not np.isclose(lmbda, 0) and len(computed_eigenvalues) < n_eigs:
-            computed_eigenvalues.append(np.round(np.real(lmbda)))
+    # computed_eigenvalues = []
+    # for i in range(n_conv):
+    #     lmbda = eps.getEigenvalue(i)
+    #     # Ignore zero eigenvalues, see [1]
+    #     if not np.isclose(lmbda, 0) and len(computed_eigenvalues) < n_eigs:
+    #         computed_eigenvalues.append(np.round(np.real(lmbda)))
+
+    ai, aj, av = A.getValuesCSR()
+    A_sympy = csr_matrix((av, aj, ai))
+    bi, bj, bv = B.getValuesCSR()
+    B_sympy = csr_matrix((bv, bj, bi))
+
+    computed_eigenvalues, vecs = eigs(A_sympy, k=n_eigs, M=B_sympy, sigma=shift)
+    computed_eigenvalues = np.real(computed_eigenvalues)
+
     return np.sort(computed_eigenvalues)
 
 
@@ -110,7 +121,8 @@ mesh = RectangleMesh(
     MPI.COMM_WORLD,
     [np.array([0, 0, 0]), np.array([np.pi, np.pi, 0])], [n, n],
     CellType.triangle, dolfinx.cpp.mesh.GhostMode.none,
-    diagonal="right")
+    # diagonal="right")
+    diagonal="crossed")
 
 # Nédélec
 V_nedelec = FunctionSpace(mesh, ("N1curl", 1))
