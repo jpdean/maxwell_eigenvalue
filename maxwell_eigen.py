@@ -117,7 +117,7 @@ mesh = RectangleMesh(
 # Nédélec
 V_nedelec = FunctionSpace(mesh, ("N1curl", 1))
 
-# Set boundart DOFs to 0 (u x n = 0 on \partial \Omega).
+# Set boundary DOFs to 0 (u x n = 0 on \partial \Omega).
 ud_nedelec = Function(V_nedelec)
 with ud_nedelec.vector.localForm() as bc_local:
     bc_local.set(0.0)
@@ -128,17 +128,24 @@ bcs_nedelec = [DirichletBC(ud_nedelec,
 eigenvalues_nedelec = eigenvalues(n_eigs, shift, V_nedelec, bcs_nedelec)
 
 # Lagrange
-W = VectorFunctionSpace(mesh, ("Lagrange", 1))
-V = FunctionSpace(mesh, ("Lagrange", 1))
+V_vec_lagrange = VectorFunctionSpace(mesh, ("Lagrange", 1))
+V_lagrange = FunctionSpace(mesh, ("Lagrange", 1))
 
-ud_lagrange = Function(V)
+# Zero function
+ud_lagrange = Function(V_lagrange)
 with ud_lagrange.vector.localForm() as ud_lagrange_local:
     ud_lagrange_local.set(0.0)
-dofs_0 = dolfinx.fem.locate_dofs_geometrical((W.sub(0), V), boundary_tb)
-dofs_1 = dolfinx.fem.locate_dofs_geometrical((W.sub(1), V), boundary_lr)
-bcs_lagrange = [DirichletBC(ud_lagrange, dofs_0, W.sub(0)),
-                DirichletBC(ud_lagrange, dofs_1, W.sub(1))]
-eigenvalues_lagrange = eigenvalues(n_eigs, shift, W, bcs_lagrange)
+# Find correct DOFs to constrain. Must constrain horizontal DOFs on
+# horizontal faces and vertical DOFs on vertical faces
+dofs_0 = dolfinx.fem.locate_dofs_geometrical(
+    (V_vec_lagrange.sub(0), V_lagrange), boundary_tb)
+dofs_1 = dolfinx.fem.locate_dofs_geometrical(
+    (V_vec_lagrange.sub(1), V_lagrange), boundary_lr)
+bcs_lagrange = [DirichletBC(ud_lagrange, dofs_0, V_vec_lagrange.sub(0)),
+                DirichletBC(ud_lagrange, dofs_1, V_vec_lagrange.sub(1))]
+
+# Solve Maxwell eigenvalue problem
+eigenvalues_lagrange = eigenvalues(n_eigs, shift, V_vec_lagrange, bcs_lagrange)
 
 # Print results
 np.set_printoptions(formatter={'float': '{:5.1f}'.format})
