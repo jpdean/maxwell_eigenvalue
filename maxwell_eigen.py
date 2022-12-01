@@ -9,40 +9,34 @@ import dolfinx
 from slepc4py import SLEPc
 from ufl import dx, curl, inner, TrialFunction, TestFunction
 import numpy as np
-from dolfinx import (DirichletBC, Function, FunctionSpace, RectangleMesh,
-                     VectorFunctionSpace)
+from dolfinx.fem import (dirichletbc, Function, FunctionSpace, form,
+                         VectorFunctionSpace, locate_dofs_topological)
 from mpi4py import MPI
-from dolfinx.fem import assemble_matrix, locate_dofs_geometrical
+from dolfinx.fem.petsc import assemble_matrix
 from petsc4py import PETSc
-from dolfinx.cpp.mesh import CellType
+from dolfinx.mesh import CellType, create_rectangle, locate_entities_boundary
 
 
 def eigenvalues(n_eigs, shift, V, bcs):
     # Define problem
     u = TrialFunction(V)
     v = TestFunction(V)
-    a = inner(curl(u), curl(v)) * dx
-    b = inner(u, v) * dx
+    a = form(inner(curl(u), curl(v)) * dx)
+    b = form(inner(u, v) * dx)
 
     # Assemble matrices
-    # TODO Check this preserves symmetry, see comment in [1]
     A = assemble_matrix(a, bcs)
     A.assemble()
     B = assemble_matrix(b, bcs)
     B.assemble()
 
     # Zero rows of boundary DOFs of B. See [1]
-    # FIXME This is probably a stupid way of doing it
     for bc in bcs:
         dof_indices = bc.dof_indices()[0]
-        for index in dof_indices:
-            B.setValue(index, index, 0)
+        B.zeroRows(dof_indices, diag=0.0)
     B.assemble()
 
     # Create SLEPc Eigenvalue solver
-    # Settings found by following [1] and finding actual SLEPc settings from
-    # old FEniCS SLEPcEigenSolver.cpp documentation [2] and comparing with
-    # slepc4py documentation [3].
     eps = SLEPc.EPS().create(PETSc.COMM_WORLD)
     eps.setOperators(A, B)
     eps.setType(SLEPc.EPS.Type.KRYLOVSCHUR)
@@ -102,10 +96,11 @@ def print_eigenvalues(mesh):
 
     # Set boundary DOFs to 0 (u x n = 0 on \partial \Omega).
     ud_nedelec = Function(V_nedelec)
-    with ud_nedelec.vector.localForm() as bc_local:
-        bc_local.set(0.0)
-    bcs_nedelec = [DirichletBC(ud_nedelec,
-                               locate_dofs_geometrical(V_nedelec, boundary))]
+    f_dim = mesh.topology.dim - 1
+    boundary_facets = locate_entities_boundary(mesh, f_dim, boundary)
+    boundary_dofs_nedelec = locate_dofs_topological(
+        V_nedelec, f_dim, boundary_facets)
+    bcs_nedelec = [dirichletbc(ud_nedelec, boundary_dofs_nedelec)]
 
     # Solve Maxwell eigenvalue problem
     eigenvalues_nedelec = eigenvalues(n_eigs, shift, V_nedelec, bcs_nedelec)
@@ -116,16 +111,16 @@ def print_eigenvalues(mesh):
 
     # Zero function
     ud_lagrange = Function(V_lagrange)
-    with ud_lagrange.vector.localForm() as ud_lagrange_local:
-        ud_lagrange_local.set(0.0)
-    # Find correct DOFs to constrain. Must constrain horizontal DOFs on
-    # horizontal faces and vertical DOFs on vertical faces
-    dofs_0 = dolfinx.fem.locate_dofs_geometrical(
-        (V_vec_lagrange.sub(0), V_lagrange), boundary_tb)
-    dofs_1 = dolfinx.fem.locate_dofs_geometrical(
-        (V_vec_lagrange.sub(1), V_lagrange), boundary_lr)
-    bcs_lagrange = [DirichletBC(ud_lagrange, dofs_0, V_vec_lagrange.sub(0)),
-                    DirichletBC(ud_lagrange, dofs_1, V_vec_lagrange.sub(1))]
+    # Must constrain horizontal DOFs on horizontal faces and vertical DOFs
+    # on vertical faces
+    boundary_facets_tb = locate_entities_boundary(mesh, f_dim, boundary_tb)
+    boundary_facets_lr = locate_entities_boundary(mesh, f_dim, boundary_lr)
+    dofs_tb = locate_dofs_topological(
+        (V_vec_lagrange.sub(0), V_lagrange), f_dim, boundary_facets_tb)
+    dofs_lr = locate_dofs_topological(
+        (V_vec_lagrange.sub(1), V_lagrange), f_dim, boundary_facets_lr)
+    bcs_lagrange = [dirichletbc(ud_lagrange, dofs_tb, V_vec_lagrange.sub(0)),
+                    dirichletbc(ud_lagrange, dofs_lr, V_vec_lagrange.sub(1))]
 
     # Solve Maxwell eigenvalue problem
     eigenvalues_lagrange = eigenvalues(
@@ -149,19 +144,18 @@ n_eigs = 12
 shift = 5.5
 
 print("Right diagonal mesh:")
-# Create mesh with right diagonal
-mesh = RectangleMesh(
+points = ((0.0, 0.0), (np.pi, np.pi))
+mesh = create_rectangle(
     MPI.COMM_WORLD,
-    [np.array([0, 0, 0]), np.array([np.pi, np.pi, 0])], [n, n],
-    CellType.triangle, dolfinx.cpp.mesh.GhostMode.none,
-    diagonal="right")
+    points, (n, n),
+    CellType.triangle, dolfinx.mesh.GhostMode.none,
+    diagonal=dolfinx.mesh.DiagonalType.right)
 print_eigenvalues(mesh)
 
 print("\nCrossed diagonal mesh:")
-# Create mesh with crossed diagonal
-mesh = RectangleMesh(
+mesh = create_rectangle(
     MPI.COMM_WORLD,
-    [np.array([0, 0, 0]), np.array([np.pi, np.pi, 0])], [n, n],
-    CellType.triangle, dolfinx.cpp.mesh.GhostMode.none,
-    diagonal="crossed")
+    points, (n, n),
+    CellType.triangle, dolfinx.mesh.GhostMode.none,
+    diagonal=dolfinx.mesh.DiagonalType.crossed)
 print_eigenvalues(mesh)
