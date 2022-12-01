@@ -5,7 +5,6 @@
 # [2]: https://bitbucket.org/fenics-project/dolfin/src/master/dolfin/la/SLEPcEigenSolver.cpp
 # [3]: https://slepc.upv.es/slepc4py-current/docs/apiref/slepc4py.SLEPc-module.html
 
-import dolfinx
 from slepc4py import SLEPc
 from ufl import dx, curl, inner, TrialFunction, TestFunction
 import numpy as np
@@ -14,7 +13,8 @@ from dolfinx.fem import (dirichletbc, Function, FunctionSpace, form,
 from mpi4py import MPI
 from dolfinx.fem.petsc import assemble_matrix
 from petsc4py import PETSc
-from dolfinx.mesh import CellType, create_rectangle, locate_entities_boundary
+from dolfinx.mesh import (create_rectangle, locate_entities_boundary,
+                          CellType, GhostMode, DiagonalType)
 import sys
 
 
@@ -55,18 +55,15 @@ def eigenvalues(n_eigs, shift, V, bcs):
     eps.solve()
 
     its = eps.getIterationNumber()
-    par_print(f"Number of iterations: {its}")
-
     eps_type = eps.getType()
-    par_print(f"Solution method: {eps_type}")
-
     n_ev, n_cv, mpd = eps.getDimensions()
-    par_print(f"Number of requested eigenvalues: {n_ev}")
-
     tol, max_it = eps.getTolerances()
-    par_print(f"Stopping condition: tol={tol}, maxit={max_it}")
-
     n_conv = eps.getConverged()
+
+    par_print(f"Number of iterations: {its}")
+    par_print(f"Solution method: {eps_type}")
+    par_print(f"Number of requested eigenvalues: {n_ev}")
+    par_print(f"Stopping condition: tol={tol}, maxit={max_it}")
     par_print(f"Number of converged eigenpairs: {n_conv}")
 
     computed_eigenvalues = []
@@ -77,25 +74,20 @@ def eigenvalues(n_eigs, shift, V, bcs):
 
 
 def boundary(x):
-    lr = boundary_lr(x)
-    tb = boundary_tb(x)
-    return np.logical_or(lr, tb)
+    return boundary_lr(x) | boundary_tb(x)
 
 
 def boundary_lr(x):
-    return np.logical_or(np.isclose(x[0], 0.0),
-                         np.isclose(x[0], np.pi))
+    return np.isclose(x[0], 0.0) | np.isclose(x[0], np.pi)
 
 
 def boundary_tb(x):
-    return np.logical_or(np.isclose(x[1], 0.0),
-                         np.isclose(x[1], np.pi))
+    return np.isclose(x[1], 0.0) | np.isclose(x[1], np.pi)
 
 
 def print_eigenvalues(mesh):
     # Nédélec
     V_nedelec = FunctionSpace(mesh, ("N1curl", 1))
-
     # Set boundary DOFs to 0 (u x n = 0 on \partial \Omega).
     ud_nedelec = Function(V_nedelec)
     f_dim = mesh.topology.dim - 1
@@ -110,8 +102,6 @@ def print_eigenvalues(mesh):
     # Lagrange
     V_vec_lagrange = VectorFunctionSpace(mesh, ("Lagrange", 1))
     V_lagrange = FunctionSpace(mesh, ("Lagrange", 1))
-
-    # Zero function
     ud_lagrange = Function(V_lagrange)
     # Must constrain horizontal DOFs on horizontal faces and vertical DOFs
     # on vertical faces
@@ -144,22 +134,23 @@ n = 40
 n_eigs = 12
 # Find eigenvalues near
 shift = 5.5
+# Domain corners
+corners = ((0.0, 0.0), (np.pi, np.pi))
 
 comm = MPI.COMM_WORLD
 
 par_print("Right diagonal mesh:")
-points = ((0.0, 0.0), (np.pi, np.pi))
 mesh = create_rectangle(
     comm,
-    points, (n, n),
-    CellType.triangle, dolfinx.mesh.GhostMode.none,
-    diagonal=dolfinx.mesh.DiagonalType.right)
+    corners, (n, n),
+    CellType.triangle, GhostMode.none,
+    diagonal=DiagonalType.right)
 print_eigenvalues(mesh)
 
 par_print("\nCrossed diagonal mesh:")
 mesh = create_rectangle(
     comm,
-    points, (n, n),
-    CellType.triangle, dolfinx.mesh.GhostMode.none,
-    diagonal=dolfinx.mesh.DiagonalType.crossed)
+    corners, (n, n),
+    CellType.triangle, GhostMode.none,
+    diagonal=DiagonalType.crossed)
 print_eigenvalues(mesh)
