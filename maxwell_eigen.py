@@ -15,6 +15,13 @@ from mpi4py import MPI
 from dolfinx.fem.petsc import assemble_matrix
 from petsc4py import PETSc
 from dolfinx.mesh import CellType, create_rectangle, locate_entities_boundary
+import sys
+
+
+def par_print(string):
+    if comm.rank == 0:
+        print(string)
+        sys.stdout.flush()
 
 
 def eigenvalues(n_eigs, shift, V, bcs):
@@ -27,13 +34,8 @@ def eigenvalues(n_eigs, shift, V, bcs):
     # Assemble matrices
     A = assemble_matrix(a, bcs)
     A.assemble()
-    B = assemble_matrix(b, bcs)
-    B.assemble()
-
     # Zero rows of boundary DOFs of B. See [1]
-    for bc in bcs:
-        dof_indices = bc.dof_indices()[0]
-        B.zeroRows(dof_indices, diag=0.0)
+    B = assemble_matrix(b, bcs, diagonal=0.0)
     B.assemble()
 
     # Create SLEPc Eigenvalue solver
@@ -53,19 +55,19 @@ def eigenvalues(n_eigs, shift, V, bcs):
     eps.solve()
 
     its = eps.getIterationNumber()
-    print(f"Number of iterations: {its}")
+    par_print(f"Number of iterations: {its}")
 
     eps_type = eps.getType()
-    print(f"Solution method: {eps_type}")
+    par_print(f"Solution method: {eps_type}")
 
     n_ev, n_cv, mpd = eps.getDimensions()
-    print(f"Number of requested eigenvalues: {n_ev}")
+    par_print(f"Number of requested eigenvalues: {n_ev}")
 
     tol, max_it = eps.getTolerances()
-    print(f"Stopping condition: tol={tol}, maxit={max_it}")
+    par_print(f"Stopping condition: tol={tol}, maxit={max_it}")
 
     n_conv = eps.getConverged()
-    print(f"Number of converged eigenpairs: {n_conv}")
+    par_print(f"Number of converged eigenpairs: {n_conv}")
 
     computed_eigenvalues = []
     for i in range(min(n_conv, n_eigs)):
@@ -131,9 +133,9 @@ def print_eigenvalues(mesh):
     eigenvalues_exact = np.sort(np.array([float(m**2 + n**2)
                                           for m in range(6)
                                           for n in range(6)]))[1:13]
-    print(f"Exact    = {eigenvalues_exact}")
-    print(f"Nédélec  = {eigenvalues_nedelec}")
-    print(f"Lagrange = {eigenvalues_lagrange}")
+    par_print(f"Exact    = {eigenvalues_exact}")
+    par_print(f"Nédélec  = {eigenvalues_nedelec}")
+    par_print(f"Lagrange = {eigenvalues_lagrange}")
 
 
 # Number of element in each direction
@@ -143,18 +145,20 @@ n_eigs = 12
 # Find eigenvalues near
 shift = 5.5
 
-print("Right diagonal mesh:")
+comm = MPI.COMM_WORLD
+
+par_print("Right diagonal mesh:")
 points = ((0.0, 0.0), (np.pi, np.pi))
 mesh = create_rectangle(
-    MPI.COMM_WORLD,
+    comm,
     points, (n, n),
     CellType.triangle, dolfinx.mesh.GhostMode.none,
     diagonal=dolfinx.mesh.DiagonalType.right)
 print_eigenvalues(mesh)
 
-print("\nCrossed diagonal mesh:")
+par_print("\nCrossed diagonal mesh:")
 mesh = create_rectangle(
-    MPI.COMM_WORLD,
+    comm,
     points, (n, n),
     CellType.triangle, dolfinx.mesh.GhostMode.none,
     diagonal=dolfinx.mesh.DiagonalType.crossed)
