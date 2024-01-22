@@ -1,4 +1,4 @@
-# Based on [1]
+# Based on [1], updated to work in FEniCSx.
 
 # References:
 # [1]: https://fenicsproject.org/olddocs/dolfin/latest/python/demos/maxwell-eigenvalues/demo_maxwell-eigenvalues.py.html
@@ -26,8 +26,7 @@ def par_print(string):
 
 def eigenvalues(n_eigs, shift, V, bcs):
     # Define problem
-    u = TrialFunction(V)
-    v = TestFunction(V)
+    u, v = TrialFunction(V), TestFunction(V)
     a = form(inner(curl(u), curl(v)) * dx)
     b = form(inner(u, v) * dx)
 
@@ -76,50 +75,52 @@ def eigenvalues(n_eigs, shift, V, bcs):
 
 
 def boundary(x):
+    "Boundary marker"
     return boundary_lr(x) | boundary_tb(x)
 
 
 def boundary_lr(x):
+    "Left and right boundary marker"
     return np.isclose(x[0], 0.0) | np.isclose(x[0], np.pi)
 
 
 def boundary_tb(x):
+    "Top and bottom boundary marker"
     return np.isclose(x[1], 0.0) | np.isclose(x[1], np.pi)
 
 
 def print_eigenvalues(mesh):
     # Nédélec
-    V_nedelec = functionspace(mesh, ("N1curl", 1))
+    V_n = functionspace(mesh, ("N1curl", 1))
     # Set boundary DOFs to 0 (u x n = 0 on \partial \Omega).
-    ud_nedelec = Function(V_nedelec)
+    ud_n = Function(V_n)
     f_dim = mesh.topology.dim - 1
     boundary_facets = locate_entities_boundary(mesh, f_dim, boundary)
-    boundary_dofs_nedelec = locate_dofs_topological(
-        V_nedelec, f_dim, boundary_facets)
-    bcs_nedelec = [dirichletbc(ud_nedelec, boundary_dofs_nedelec)]
+    boundary_dofs_n = locate_dofs_topological(
+        V_n, f_dim, boundary_facets)
+    bcs_nedelec = [dirichletbc(ud_n, boundary_dofs_n)]
 
     # Solve Maxwell eigenvalue problem
-    eigenvalues_nedelec = eigenvalues(n_eigs, shift, V_nedelec, bcs_nedelec)
+    eigenvalues_nedelec = eigenvalues(n_eigs, shift, V_n, bcs_nedelec)
 
     # Lagrange
-    V_vec_lagrange = functionspace(mesh, ("Lagrange", 1, (mesh.geometry.dim,)))
-    V_lagrange = functionspace(mesh, ("Lagrange", 1))
-    ud_lagrange = Function(V_lagrange)
+    V_l = functionspace(mesh, ("Lagrange", 1, (mesh.geometry.dim,)))
+    W = functionspace(mesh, ("Lagrange", 1))
+    ud_l = Function(W)
     # Must constrain horizontal DOFs on horizontal faces and vertical DOFs
     # on vertical faces
     boundary_facets_tb = locate_entities_boundary(mesh, f_dim, boundary_tb)
     boundary_facets_lr = locate_entities_boundary(mesh, f_dim, boundary_lr)
-    V_vec_lag_0, V_vec_lag_1 = V_vec_lagrange.sub(0), V_vec_lagrange.sub(1)
+    V_l_0, V_l_1 = V_l.sub(0), V_l.sub(1)
     dofs_tb = locate_dofs_topological(
-        (V_vec_lag_0, V_lagrange), f_dim, boundary_facets_tb)
+        (V_l_0, W), f_dim, boundary_facets_tb)
     dofs_lr = locate_dofs_topological(
-        (V_vec_lag_1, V_lagrange), f_dim, boundary_facets_lr)
-    bcs_lagrange = [dirichletbc(ud_lagrange, dofs_tb, V_vec_lag_0),
-                    dirichletbc(ud_lagrange, dofs_lr, V_vec_lag_1)]
+        (V_l_1, W), f_dim, boundary_facets_lr)
+    bcs_lagrange = [dirichletbc(ud_l, dofs_tb, V_l_0),
+                    dirichletbc(ud_l, dofs_lr, V_l_1)]
 
     # Solve Maxwell eigenvalue problem
-    eigenvalues_lagrange = eigenvalues(
-        n_eigs, shift, V_vec_lagrange, bcs_lagrange)
+    eigenvalues_lagrange = eigenvalues(n_eigs, shift, V_l, bcs_lagrange)
 
     # Print results
     np.set_printoptions(formatter={'float': '{:5.1f}'.format})
