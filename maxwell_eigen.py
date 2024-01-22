@@ -70,6 +70,8 @@ def eigenvalues(n_eigs, shift, V, bcs):
     for i in range(min(n_conv, n_eigs)):
         lmbda = eps.getEigenvalue(i)
         computed_eigenvalues.append(np.round(np.real(lmbda), 1))
+
+    eps.destroy()
     return np.sort(computed_eigenvalues)
 
 
@@ -107,12 +109,13 @@ def print_eigenvalues(mesh):
     # on vertical faces
     boundary_facets_tb = locate_entities_boundary(mesh, f_dim, boundary_tb)
     boundary_facets_lr = locate_entities_boundary(mesh, f_dim, boundary_lr)
+    V_vec_lag_0, V_vec_lag_1 = V_vec_lagrange.sub(0), V_vec_lagrange.sub(1)
     dofs_tb = locate_dofs_topological(
-        (V_vec_lagrange.sub(0), V_lagrange), f_dim, boundary_facets_tb)
+        (V_vec_lag_0, V_lagrange), f_dim, boundary_facets_tb)
     dofs_lr = locate_dofs_topological(
-        (V_vec_lagrange.sub(1), V_lagrange), f_dim, boundary_facets_lr)
-    bcs_lagrange = [dirichletbc(ud_lagrange, dofs_tb, V_vec_lagrange.sub(0)),
-                    dirichletbc(ud_lagrange, dofs_lr, V_vec_lagrange.sub(1))]
+        (V_vec_lag_1, V_lagrange), f_dim, boundary_facets_lr)
+    bcs_lagrange = [dirichletbc(ud_lagrange, dofs_tb, V_vec_lag_0),
+                    dirichletbc(ud_lagrange, dofs_lr, V_vec_lag_1)]
 
     # Solve Maxwell eigenvalue problem
     eigenvalues_lagrange = eigenvalues(
