@@ -8,8 +8,8 @@
 from slepc4py import SLEPc
 from ufl import dx, curl, inner, TrialFunction, TestFunction
 import numpy as np
-from dolfinx.fem import (dirichletbc, Function, FunctionSpace, form,
-                         VectorFunctionSpace, locate_dofs_topological)
+from dolfinx.fem import (dirichletbc, Function, functionspace, form,
+                         locate_dofs_topological)
 from mpi4py import MPI
 from dolfinx.fem.petsc import assemble_matrix
 from petsc4py import PETSc
@@ -87,7 +87,7 @@ def boundary_tb(x):
 
 def print_eigenvalues(mesh):
     # Nédélec
-    V_nedelec = FunctionSpace(mesh, ("N1curl", 1))
+    V_nedelec = functionspace(mesh, ("N1curl", 1))
     # Set boundary DOFs to 0 (u x n = 0 on \partial \Omega).
     ud_nedelec = Function(V_nedelec)
     f_dim = mesh.topology.dim - 1
@@ -100,8 +100,8 @@ def print_eigenvalues(mesh):
     eigenvalues_nedelec = eigenvalues(n_eigs, shift, V_nedelec, bcs_nedelec)
 
     # Lagrange
-    V_vec_lagrange = VectorFunctionSpace(mesh, ("Lagrange", 1))
-    V_lagrange = FunctionSpace(mesh, ("Lagrange", 1))
+    V_vec_lagrange = functionspace(mesh, ("Lagrange", 1, (mesh.geometry.dim,)))
+    V_lagrange = functionspace(mesh, ("Lagrange", 1))
     ud_lagrange = Function(V_lagrange)
     # Must constrain horizontal DOFs on horizontal faces and vertical DOFs
     # on vertical faces
@@ -143,7 +143,8 @@ par_print("Right diagonal mesh:")
 mesh = create_rectangle(
     comm,
     corners, (n, n),
-    CellType.triangle, GhostMode.none,
+    CellType.triangle,
+    ghost_mode=GhostMode.none,
     diagonal=DiagonalType.right)
 print_eigenvalues(mesh)
 
@@ -151,6 +152,7 @@ par_print("\nCrossed diagonal mesh:")
 mesh = create_rectangle(
     comm,
     corners, (n, n),
-    CellType.triangle, GhostMode.none,
+    CellType.triangle,
+    ghost_mode=GhostMode.none,
     diagonal=DiagonalType.crossed)
 print_eigenvalues(mesh)
