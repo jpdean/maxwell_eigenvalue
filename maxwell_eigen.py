@@ -39,7 +39,7 @@ def eigenvalues(n_eigs, shift, V, bcs):
     B.assemble()
 
     # Create SLEPc Eigenvalue solver
-    eps = SLEPc.EPS().create(PETSc.COMM_WORLD)
+    eps = SLEPc.EPS().create(comm)
     eps.setOperators(A, B)
     eps.setType(SLEPc.EPS.Type.KRYLOVSCHUR)
     eps.setProblemType(SLEPc.EPS.ProblemType.GHEP)
